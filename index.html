@@ -1,0 +1,107 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Smart Hospital Triage System</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="style.css">
+
+<header class="top"><div class="wrap">
+  <div>
+    <div class="eyebrow">Operating Systems mini-project &middot; multithreading prototype</div>
+    <h1>Smart Hospital Triage System</h1>
+  </div>
+  <div class="clock"><span class="dot" id="dot"></span><span id="clock"><b>08:00</b></span><span class="sub" id="shift" style="color:inherit;opacity:.7">shift 0 / 480 min</span></div>
+</div></header>
+
+<div class="controls"><div class="wrap">
+  <div class="grp"><label>Run</label><div class="row">
+    <button class="primary" id="bRun">Start</button><button id="bStep">Step +1 min</button><button id="bReset">Reset</button>
+  </div></div>
+  <div class="grp"><label for="sStrat">Scheduling policy</label>
+    <select id="sStrat"><option value="aging">Priority + aging</option><option value="priority">Strict priority</option><option value="fcfs">First come, first served</option></select></div>
+  <div class="grp"><label for="sSpeed">Speed</label>
+    <select id="sSpeed"><option value="1">1 min / sec</option><option value="5">5 min / sec</option><option value="15" selected>15 min / sec</option><option value="30">30 min / sec</option><option value="60">60 min / sec</option></select></div>
+  <div class="grp"><label for="nDoc">Doctor threads</label><input type="number" id="nDoc" min="1" max="6" value="3" style="width:70px"></div>
+  <div class="grp"><label for="nRate">Arrivals / hour</label><input type="number" id="nRate" min="2" max="30" value="12" style="width:80px"></div>
+  <div class="grp"><label for="nSeed">Random seed</label><input type="number" id="nSeed" value="7" style="width:80px"></div>
+  <div class="grp"><label>Events</label><div class="row">
+    <button id="bSurge">Arrival surge (+10)</button><button class="danger" id="bFault">Inject doctor fault</button>
+  </div></div>
+  <div class="grp"><label for="wA" style="text-transform:none;letter-spacing:0;font-size:12px">&alpha; severity</label><input type="range" id="wA" min="0" max="100" value="70"></div>
+  <div class="grp"><label for="wB" style="text-transform:none;letter-spacing:0;font-size:12px">&beta; waiting time</label><input type="range" id="wB" min="0" max="100" value="20"></div>
+  <div class="grp"><label for="wG" style="text-transform:none;letter-spacing:0;font-size:12px">&gamma; aging</label><input type="range" id="wG" min="0" max="100" value="25"></div>
+  <div class="formula" id="formula"></div>
+</div></div>
+
+<div class="wrap">
+<div class="floor">
+  <div class="card">
+    <h2>Emergency department <small>patients are tasks, doctors are worker threads, beds and equipment are semaphores</small></h2>
+    <div class="lbl" style="margin-bottom:6px">Doctor threads</div>
+    <div class="docs" id="docs"></div>
+    <div class="lbl" style="margin-top:14px">Shared resources (counting semaphores)</div>
+    <div class="res" id="res"></div>
+    <div class="lbl" style="margin-top:14px">Waiting queues, in dispatch order</div>
+    <div class="queues" id="queues"></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
+    <div class="card"><h2>Thread monitor <small id="lockinfo"></small></h2><table class="thr" id="threads"></table></div>
+    <div class="card"><h2>Event log</h2><div class="log" id="log"></div></div>
+  </div>
+</div>
+
+<section class="panel">
+  <div class="tiles" id="tiles"></div>
+</section>
+
+<section class="panel two">
+  <div class="card"><h2>Patients waiting over the shift <small>by priority</small></h2>
+    <svg class="spark" id="spark" viewBox="0 0 520 150" role="img" aria-label="Queue length over time by priority"></svg>
+    <div class="legend"><span><i style="background:var(--p1)"></i>P1 critical</span><span><i style="background:var(--p2)"></i>P2 urgent</span><span><i style="background:var(--p3)"></i>P3 semi-urgent</span><span><i style="background:var(--p4)"></i>P4 non-urgent</span></div>
+  </div>
+  <div class="card"><h2>Waiting time by priority <small>this run, minutes</small></h2>
+    <div class="tablewrap"><table class="t" id="waitTable"></table></div>
+    <div class="row" style="margin-top:12px"><button id="bCsvLive">Copy patient log (CSV)</button></div>
+    <textarea id="csvLive" hidden readonly></textarea>
+  </div>
+</section>
+
+<section class="panel card">
+  <h2>Compare scheduling policies <small>same patients, same seed, same doctors; three runs of the full shift</small></h2>
+  <div class="row" style="margin-bottom:12px"><button class="primary" id="bCmp">Run comparison</button><span class="note" id="cmpNote">Uses the doctor count, arrival rate, seed and weights above. Surge and fault buttons are not applied.</span></div>
+  <div class="two">
+    <div><svg class="spark" id="cmpChart" viewBox="0 0 520 260" role="img" aria-label="Average waiting time by priority for each policy"></svg>
+      <div class="legend" id="cmpLegend"></div></div>
+    <div><div class="tablewrap"><table class="t" id="cmpTable"></table></div>
+      <div class="row" style="margin-top:12px"><button id="bCsvCmp">Copy comparison (CSV)</button></div>
+      <textarea id="csvCmp" hidden readonly></textarea></div>
+  </div>
+</section>
+
+<section class="panel card">
+  <h2>Race condition lab <small>three threads each admit patients to the ICU and update one shared counter</small></h2>
+  <div class="row"><label class="lbl" for="nOps">Admissions per thread</label><input type="number" id="nOps" min="50" max="3000" value="300" style="width:90px"><button class="primary" id="bRace">Run both versions</button></div>
+  <div class="race">
+    <div class="r" id="raceBad"><div class="lbl">Without a mutex</div><div class="big" id="rBadV">-</div><div class="sub" id="rBadS">Each thread reads the counter, yields, then writes read+1.</div></div>
+    <div class="r" id="raceGood"><div class="lbl">With a mutex</div><div class="big" id="rGoodV">-</div><div class="sub" id="rGoodS">Each thread holds the lock across the read and the write.</div></div>
+  </div>
+</section>
+
+<section class="panel card">
+  <h2>Where each OS concept appears</h2>
+  <ul class="map">
+    <li><b>Process and thread:</b> arrival generator, dispatcher, doctors, fault monitor and metrics are separate logical threads in the monitor.</li>
+    <li><b>Producer-consumer:</b> the generator adds patients to the queues, doctor threads take them out and sleep on a condition variable when the queues are empty.</li>
+    <li><b>Mutual exclusion:</b> queue changes and patient assignment run under one mutex; the lock operation count is shown in the thread monitor.</li>
+    <li><b>Semaphores:</b> ICU beds, ventilators and the X-ray unit are counting semaphores with FIFO waiters.</li>
+    <li><b>Deadlock avoidance:</b> every doctor requests resources in the same fixed order (ICU bed, ventilator, X-ray).</li>
+    <li><b>Priority scheduling and aging:</b> the policy selector and the &alpha;, &beta;, &gamma; sliders; dashed outlines mark patients past their wait threshold.</li>
+    <li><b>Fault handling:</b> a missed heartbeat releases the doctor's resources and returns the patient to the queue.</li>
+  </ul>
+</section>
+</div>
+
+<footer><div class="wrap"><p class="note">Educational simulation with synthetic patients. Triage levels, treatment times and weights are simplified and are not clinical guidance. JavaScript runs on one thread, so the threads here are logical threads scheduled on a virtual clock (one tick equals one simulated minute). The C++ design with std::thread, std::mutex and std::condition_variable is described in the project report.</p></div></footer>
+
+<script src="app.js"></script>
